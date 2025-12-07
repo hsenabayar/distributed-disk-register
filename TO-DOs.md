@@ -1,8 +1,8 @@
 ## 1. Aşama
-* [ ] Grup üyeleri girişini yap.
-* [ ] GitHub’daki şablon repoyu **fork** et
-* [ ] Github' da ekip için proje oluştur. Taskları burada tanımla ve ekip üyelerine ata.
-* [ ] TCP server istemciden gelen mesajları pars etme SET/GET Komut parse eden bir sınıf. Örn: `Command parse(String line)` → `SetCommand` / `GetCommand`
+* [X] Grup üyeleri girişini yap.
+* [X] GitHub’daki şablon repoyu **fork** et
+* [X] Github' da ekip için proje oluştur. Taskları burada tanımla ve ekip üyelerine ata.
+* [X] TCP server istemciden gelen mesajları pars etme SET/GET Komut parse eden bir sınıf. Örn: `Command parse(String line)` → `SetCommand` / `GetCommand`
 
   * `SET` → `map.put(id, msg)` + `OK`
   * `GET` → `map.get(id)` + bulunamazsa `NOT_FOUND`
