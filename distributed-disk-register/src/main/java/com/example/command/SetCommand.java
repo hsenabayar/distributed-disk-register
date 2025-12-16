@@ -1,5 +1,6 @@
 package com.example.command;
 
+import com.example.store.MessageStore;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class SetCommand extends Command {
@@ -12,14 +13,17 @@ public class SetCommand extends Command {
     }
 
     @Override
-    public String execute(ConcurrentHashMap<String, String> storage) {
-        // Ödevde istenen: SET -> map.put(id, msg) + OK
-        
-        // Bu aşamada sadece liderin kendi hafızasına kaydını yapıyoruz.
-        // Hata toleransı (gRPC ile diğer üyelere gönderme) sonraki aşamalarda eklenecektir.
-        storage.put(messageId, message);
-        
-        System.out.printf("[LEADER] Mesaj Kaydedildi. ID: %s, Mesaj: %s\n", messageId, message);
-        return "OK";
+    public String execute(ConcurrentHashMap<String, String> storage, MessageStore messageStore) {
+        // Mesajı diske kaydetme işlemini MessageStore'a devret.
+        if (messageStore.writeMessage(messageId, message)) {
+            System.out.printf("[LEADER] Mesaj Diske Kaydedildi. ID: %s\n", messageId);
+            
+            // Liderin Map'ini, sadece diskte hangi mesajların olduğunu takip etmek için kullanabiliriz.
+            storage.put(messageId, ""); 
+            
+            return "OK";
+        } else {
+            return "ERROR: DISK_WRITE_FAILED";
+        }
     }
 }

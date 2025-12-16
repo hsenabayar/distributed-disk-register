@@ -1,12 +1,12 @@
 package com.example.family;
 
 import com.example.command.Command;
-import com.example.command.CommandParser; // Yeni Eklendi: Komutları ayrıştırmak için
+import com.example.command.CommandParser; 
 import family.Empty;
 import family.FamilyServiceGrpc;
 import family.FamilyView;
 import family.NodeInfo;
-import family.ChatMessage; // Şimdilik sadece FamilyServiceImpl'in ihtiyacı varsa kalır, leader artık bunu kullanmayacak.
+import family.ChatMessage; 
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -24,6 +24,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.*;
 
+import com.example.store.MessageStore;
+
 public class NodeMain {
 
     private static final int START_PORT = 5555;
@@ -33,8 +35,11 @@ public class NodeMain {
     // Liderin, dağıtık olarak saklanacak mesajları hafıza içi tuttuğu Map
     private static final ConcurrentHashMap<String, String> storage = new ConcurrentHashMap<>();
     
+    
     // Istemci bağlantılarını işlemek için sabit boyutlu thread havuzu
     private static final ExecutorService clientPool = Executors.newFixedThreadPool(10); 
+
+    private static final MessageStore messageStore = new MessageStore();
 
     public static void main(String[] args) throws Exception {
         String host = "127.0.0.1";
@@ -69,14 +74,6 @@ public class NodeMain {
         server.awaitTermination();
     }
     
-    // =========================================================================
-    // AŞAMA 1 - TCP KOMUT LISTENER METOTLARI
-    // =========================================================================
-
-    /**
-     * Sadece lider (START_PORT'ta çalışan node) bu metodu çağırır.
-     * Istemciden gelen text tabanlı SET/GET komutlarını dinler.
-     */
     private static void startLeaderCommandListener(NodeInfo self) {
         new Thread(() -> {
             try (ServerSocket serverSocket = new ServerSocket(CLIENT_COMMAND_PORT)) {
@@ -122,7 +119,7 @@ public class NodeMain {
                 if (command != null) {
                     // Komutu çalıştır ve yanıtı al. storage map'ini execute metoduna iletiyoruz.
                     // (Aşama 1: Sadece liderin kendi Map'ine kaydeder.)
-                    response = command.execute(storage); 
+                    response = command.execute(storage, messageStore); 
                 } else {
                     response = "ERROR: Invalid Command Format";
                 }
@@ -146,29 +143,6 @@ public class NodeMain {
         }
     }
 
-    // =========================================================================
-    // MEVCUT GEREKSİZ METOTLARIN KALDIRILMASI (Aşama 1 gereği)
-    // =========================================================================
-    
-    /* // Eski hali: Metni ChatMessage'e çevirip broadcast ediyordu. 
-    // Artık bu kod, komut ayrıştırma ile değiştirildi ve Aşama 2'ye taşındı.
-    private static void handleClientTextConnection(Socket client, 
-                                                     NodeRegistry registry, 
-                                                     NodeInfo self) { ... }
-    */
-
-    /*
-    // Eski hali: ChatMessage'i tüm aileye broadcast ediyordu. 
-    // SET komutu için bunun yerine özel bir gRPC fonksiyonu yazılacaktır (Aşama 2).
-    private static void broadcastToFamily(NodeRegistry registry, 
-                                          NodeInfo self, 
-                                          ChatMessage msg) { ... }
-    */
-
-    // =========================================================================
-    // MEVCUT SİSTEM METOTLARI (Aynı Kaldı)
-    // =========================================================================
-
     private static int findFreePort(int startPort) {
         int port = startPort;
         while (true) {
@@ -184,11 +158,11 @@ public class NodeMain {
                                              int selfPort,
                                              NodeRegistry registry,
                                              NodeInfo self) {
-        // ... (Kodunuz aynı kaldı)
+      
     }
 
     private static void startFamilyPrinter(NodeRegistry registry, NodeInfo self) {
-        // ... (Kodunuz aynı kaldı)
+       
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
         scheduler.scheduleAtFixedRate(() -> {
@@ -200,10 +174,10 @@ public class NodeMain {
             System.out.printf("Family at %s:%d (%s)%n", self.getHost(), self.getPort(), isLeader ? "LEADER" : "MEMBER");
             System.out.println("Time: " + LocalDateTime.now());
             
-            // Ödev gereği: Lider, sistemde toplam kaç mesaj saklandığını, hangi üyelerin kaç adet mesaj tuttuğunu bastırmalıdır.
+            
             if (isLeader) {
                  System.out.println("Total Messages Stored (LIDER LOCAL): " + storage.size());
-                 // Diğer üyelerin mesaj sayıları için Aşama 2'de gRPC sorgusu gerekecek.
+               
             }
             
             System.out.println("Members:");
@@ -220,14 +194,14 @@ public class NodeMain {
     }
 
     private static void startHealthChecker(NodeRegistry registry, NodeInfo self) {
-        // ... (Kodunuz aynı kaldı)
+      
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
         scheduler.scheduleAtFixedRate(() -> {
             List<NodeInfo> members = registry.snapshot();
 
             for (NodeInfo n : members) {
-                // ... (Geri kalan kod aynı kaldı)
+                
             }
 
         }, 5, 10, TimeUnit.SECONDS); // 5 sn sonra başla, 10 sn'de bir kontrol et

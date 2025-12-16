@@ -1,5 +1,6 @@
 package com.example.command;
 
+import com.example.store.MessageStore; 
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GetCommand extends Command {
@@ -10,18 +11,16 @@ public class GetCommand extends Command {
     }
 
     @Override
-    public String execute(ConcurrentHashMap<String, String> storage) {
-        // Ödevde istenen: GET -> map.get(id) + bulunamazsa NOT_FOUND
-        
-        String result = storage.get(messageId);
+    public String execute(ConcurrentHashMap<String, String> storage, MessageStore messageStore) {
+        // Mesajı diskten okuma işlemini MessageStore'a devret.
+        String result = messageStore.readMessage(messageId);
 
         if (result != null) {
-            System.out.printf("[LEADER] Mesaj bulundu. ID: %s\n", messageId);
-            // Istemciye mesajın kendisini döndür.
-            return result; 
+            System.out.printf("[LEADER] Mesaj diskten bulundu. ID: %s\n", messageId);
+            return result; // İstemciye mesajın kendisini döndür.
         } else {
-            System.out.printf("[LEADER] Mesaj bulunamadı. ID: %s\n", messageId);
-            // Mesaj bulunamazsa NOT_FOUND döndür.
+            // Aşama 3'te buraya Hata Toleranslı okuma mantığı eklenecek.
+            System.out.printf("[LEADER] Mesaj diskte bulunamadı. ID: %s\n", messageId);
             return "NOT_FOUND";
         }
     }

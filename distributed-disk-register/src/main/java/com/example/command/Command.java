@@ -1,5 +1,5 @@
 package com.example.command;
-
+import com.example.store.MessageStore;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -12,5 +12,5 @@ public abstract class Command {
      * @param storage Lider sunucunun mesajları tuttuğu ConcurrentHashMap<ID, Mesaj>.
      * @return Istemciye gonderilecek yanit (OK, NOT_FOUND veya Mesajin kendisi).
      */
-    public abstract String execute(ConcurrentHashMap<String, String> storage);
+    public abstract String execute(ConcurrentHashMap<String, String> storage, MessageStore messageStore);
 }
