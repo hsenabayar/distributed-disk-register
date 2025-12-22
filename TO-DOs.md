@@ -12,15 +12,15 @@
 
 **Amaç:** Disk IO, buffered/unbuffered fikrine giriş.
 
-* [ ] `messages/` klasöründe her mesajı **ayrı dosyada** tut:
+* [X] `messages/` klasöründe her mesajı **ayrı dosyada** tut:
 
   * Örn. `messages/42.msg` içinde sadece o mesajın içeriği
-* [ ] `SET <id> <msg>`: Diskte dosya oluştur / üzerine yaz
-* [ ] `GET <id>`: İlgili dosyayı aç, içeriği oku, istemciye dön
-* [ ] İki farklı IO modu araştırılabilir:
+* [X] `SET <id> <msg>`: Diskte dosya oluştur / üzerine yaz
+* [X] `GET <id>`: İlgili dosyayı aç, içeriği oku, istemciye dön
+* [X] İki farklı IO modu araştırılabilir:
 
-  * [ ] **Buffered IO** ile yaz/oku (örn. `BufferedWriter`, `BufferedReader`)
-  * [ ] **Unbuffered IO** (doğrudan `FileOutputStream`, `FileInputStream`)
+  * [X] **Buffered IO** ile yaz/oku (örn. `BufferedWriter`, `BufferedReader`)
+  * [X] **Unbuffered IO** (doğrudan `FileOutputStream`, `FileInputStream`)
 
 
   * Buffered vs unbuffered farkı nedir, hangi durumda daha avantajlıdır?
@@ -34,7 +34,7 @@
 
 **Görevler:**
 
-* [ ] `.proto` dosyasında aşağıya benzer bir message tanımlanabilir:
+* [X] `.proto` dosyasında aşağıya benzer bir message tanımlanabilir:
 
   ```proto
   message StoredMessage {
@@ -43,15 +43,15 @@
   }
   ```
 
-* [ ] Üyelerin diske kaydedeceği mesajı temsil eden Java sınıfları artık Protobuf’dan gelsin:
+* [X] Üyelerin diske kaydedeceği mesajı temsil eden Java sınıfları artık Protobuf’dan gelsin:
 
   * `StoredMessage` ile çalışın, text + id bir arada olsun.
 
-* [ ] gRPC servis iskeleti oluştur:
+* [X] gRPC servis iskeleti oluştur:
 
   * Örn: `service StorageService { rpc Store(StoredMessage) returns (StoreResult); rpc Retrieve(MessageId) returns (StoredMessage); }`
 
-* [ ] Henüz dağıtık yapmayın:
+* [X] Henüz dağıtık yapmayın:
 
   * Lider ve üye aynı process içinde de olabilir, amaç önce gRPC fonksiyonunu ayağa kaldırmak.
 

@@ -2,11 +2,9 @@ package com.example.family;
 
 import com.example.command.Command;
 import com.example.command.CommandParser; 
-import family.Empty;
 import family.FamilyServiceGrpc;
 import family.FamilyView;
 import family.NodeInfo;
-import family.ChatMessage; 
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
