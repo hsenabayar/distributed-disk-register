@@ -8,10 +8,14 @@ import io.grpc.ManagedChannelBuilder;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class SetCommand extends Command {
     private final String messageId;
     private final String message;
+    
+    // Round-Robin için statik sayaç (Liderin her SET'te bir sonrakine geçmesini sağlar)
+    private static final AtomicInteger roundRobinCounter = new AtomicInteger(0);
 
     public SetCommand(String messageId, String message) {
         this.messageId = messageId;
@@ -27,11 +31,11 @@ public class SetCommand extends Command {
             return "ERROR: LOCAL_DISK_FAILED";
         }
 
-        // 2. Diğer üyeleri listele
+        // 2. Diğer üyeleri listele (Lider hariç)
         List<NodeInfo> allMembers = NodeMain.registry.snapshot();
         List<NodeInfo> availableMembers = new ArrayList<>();
         for (NodeInfo m : allMembers) {
-            if (m.getPort() != 5555) { // Lider hariç üyeleri al
+            if (m.getPort() != 5555) { 
                 availableMembers.add(m);
             }
         }
@@ -40,36 +44,44 @@ public class SetCommand extends Command {
         int successCount = 0;
         List<NodeInfo> savedNodes = new ArrayList<>();
 
-        // 3. gRPC ile Store RPC'si gönder
-        for (int i = 0; i < Math.min(tolerance, availableMembers.size()); i++) {
-            NodeInfo target = availableMembers.get(i);
-            try {
-                ManagedChannel channel = ManagedChannelBuilder.forAddress(target.getHost(), target.getPort())
-                        .usePlaintext().build();
-                FamilyServiceGrpc.FamilyServiceBlockingStub stub = FamilyServiceGrpc.newBlockingStub(channel);
+        // 3. LOAD BALANCING (Round-Robin Seçimi)
+        if (!availableMembers.isEmpty()) {
+            int membersToSelect = Math.min(tolerance, availableMembers.size());
+            
+            for (int i = 0; i < membersToSelect; i++) {
+                // Round-Robin indeksi al ve bir artır
+                int index = roundRobinCounter.getAndIncrement() % availableMembers.size();
+                NodeInfo target = availableMembers.get(index);
+                
+                try {
+                    ManagedChannel channel = ManagedChannelBuilder.forAddress(target.getHost(), target.getPort())
+                            .usePlaintext().build();
+                    FamilyServiceGrpc.FamilyServiceBlockingStub stub = FamilyServiceGrpc.newBlockingStub(channel);
 
-                StoreResponse resp = stub.store(StoredMessage.newBuilder()
-                        .setMessageId(idInt)
-                        .setContent(message)
-                        .build());
+                    StoreResponse resp = stub.store(StoredMessage.newBuilder()
+                            .setMessageId(idInt)
+                            .setContent(message)
+                            .build());
 
-                if (resp.getSuccess()) {
-                    successCount++;
-                    savedNodes.add(target);
+                    if (resp.getSuccess()) {
+                        successCount++;
+                        savedNodes.add(target);
+                    }
+                    channel.shutdown().awaitTermination(1, TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    System.err.println("❌ Üye " + target.getPort() + " hatası: " + e.getMessage());
                 }
-                channel.shutdown().awaitTermination(1, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                System.err.println("❌ Üye " + target.getPort() + " hatası: " + e.getMessage());
             }
         }
 
-        // 4. Tolerans sağlandıysa haritayı güncelle
+        // 4. Tolerans kontrolü ve Yanıt
+
         if (successCount >= tolerance || availableMembers.isEmpty()) {
             NodeMain.messageLocations.put(idInt, savedNodes);
             storage.put(messageId, "OK");
             return "OK";
         }
 
-        return "ERROR: REPLICATION_FAILED";
+        return "ERROR: REPLICATION_FAILED (Success: " + successCount + "/" + tolerance + ")";
     }
 }

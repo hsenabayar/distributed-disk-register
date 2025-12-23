@@ -76,8 +76,7 @@ public class NodeMain {
                             .build();
                     FamilyServiceGrpc.FamilyServiceBlockingStub stub = FamilyServiceGrpc.newBlockingStub(channel);
                     
-                    // family.Empty kullanarak Google çakışmasını önledik
-                    // 2 saniye timeout ekledik ki yalancı çevrimdışı olmasın
+                
                     stub.withDeadlineAfter(2, TimeUnit.SECONDS).getFamilyView(family.Empty.getDefaultInstance());
                     
                 } catch (Exception e) {
@@ -154,10 +153,28 @@ public class NodeMain {
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
             List<NodeInfo> members = registry.snapshot();
             boolean isLeader = self.getPort() == START_PORT;
+
+            // Klasördeki dosya sayısını güvenli şekilde say
+            long messageCount = 0;
+            try {
+                Path path = Paths.get("data_" + self.getPort());
+                if (Files.exists(path)) {
+                    // Sadece dosya olanları say (klasörleri hariç tut)
+                    messageCount = Files.list(path)
+                                        .filter(Files::isRegularFile)
+                                        .count();
+                }
+            } catch (IOException e) { 
+                // Klasör henüz oluşmadıysa hata basmasın diye boş bırakılabilir
+            }
+
             System.out.println("\n========= SYSTEM STATUS =========");
-            System.out.printf("Node: %d (%s) | Active: %d%n", self.getPort(), isLeader ? "L" : "M", members.size());
-            for (NodeInfo n : members) System.out.println(" - " + n.getPort());
+            System.out.printf("Node: %d (%s)%n", self.getPort(), isLeader ? "LEADER" : "MEMBER");
+            System.out.printf("Active Members in Cluster: %d%n", members.size());
+            System.out.printf("Local Storage Usage: %d files%n", messageCount); // ÖDEVİN İSTEDİĞİ KRİTİK SATIR
+            System.out.println("Time: " + LocalDateTime.now().withNano(0));
             System.out.println("=================================");
+            
         }, 5, PRINT_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 }

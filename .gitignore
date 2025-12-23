@@ -25,3 +25,12 @@ replay_pid*
 
 # shell
 *.sh
+
+
+target/
+data_*/
+*.class
+.idea/
+.project
+.settings/
+*.log
