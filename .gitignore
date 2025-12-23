@@ -34,3 +34,7 @@ data_*/
 .project
 .settings/
 *.log
+
+data/
+messages/
+.vscode/
