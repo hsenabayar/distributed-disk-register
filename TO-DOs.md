@@ -99,19 +99,19 @@
 
 **Görevler:**
 
-* [ ] `tolerance.conf` içindeki değeri **yapılandırılabilir** hale getirin (1..7)
+* [X] `tolerance.conf` içindeki değeri **yapılandırılabilir** hale getirin (1..7)
 * [ ] Test senaryoları:
 
   * Tolerance=2, 5 üye → her mesaj 2 üyeye gitsin
   * Tolerance=3, 7 üye → her mesaj 3 üyeye gitsin
-* [ ] Mesaj dağılımı:
+* [X] Mesaj dağılımı:
 
   * `message_id` veya **round-robin** ile üyeleri seçebilirsiniz
   * Amaç: Çok sayıda SET sonrası üyeler arası yük mümkün olduğunca dengeli olsun
   * Bunu ölçmek için:
 
-    * [ ] Sonda her üyenin kaç mesaj sakladığını ekrana yazdıran fonksiyon ekleyin
-* [ ] Test dokümantasyonu:
+    * [X] Sonda her üyenin kaç mesaj sakladığını ekrana yazdıran fonksiyon ekleyin
+* [X] Test dokümantasyonu:
 
   * 1000 SET sonrası 2 set üye için 500-500 civarı mesaj dağılımı
   * 9000 SET sonrası iki üçlü grup için 4500-4500 civarı dağılım
@@ -124,19 +124,19 @@
 
 **Görevler:**
 
-* [ ] Üye proceslerinden birini manuel kapatın (kill, terminal kapama)
-* [ ] Lider:
+* [X] Üye proceslerinden birini manuel kapatın (kill, terminal kapama)
+* [X] Lider:
 
   * GET sırasında crash olmuş üyeye bağlanmaya çalışırken exception aldığında:
 
     * O üyeyi “dead” işaretlesin (veya listeden çıkarsın)
     * Listedeki diğer üye(ler)den mesajı okumayı denesin
-* [ ] Test 1:
+* [X] Test 1:
 
   * Tolerance=2, 4 üye
   * Mesaj id 500 → üye 3 ve 4’te kayıtlı olsun
   * Üye 3’ü kapat → lider GET 500 isteğini üye 4’ten çekebiliyor mu?
-* [ ] Test 2:
+* [X] Test 2:
 
   * Tolerance=3, 6 üye
   * Mesaj id 4501 → üye 3,5,6’da
