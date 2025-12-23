@@ -64,10 +64,10 @@
 
 **Görevler:**
 
-* [ ] `tolerance.conf` dosyasını okuyun:
+* [X] `tolerance.conf` dosyasını okuyun:
 
   * İçinde tek satır olsun: `TOLERANCE=2`
-* [ ] Lider, her SET isteğinde:
+* [X] Lider, her SET isteğinde:
 
   1. Gelen id+mesajı diske kaydetsin (kendi mesaj haritasına da eklesin)
   2. Üye listesinden tolerance sayısı kadar üye seçsin:
@@ -79,10 +79,10 @@
   5. Bir veya daha fazlası başarısız olursa:
 
      * Bu durumda ne yapılacağı (retry, ERROR, vb) takım tasarımına bırakılabilir
-* [ ] Lider, “mesaj id → hangi üyelerde var” bilgisini bir map’te tutsun:
+* [X] Lider, “mesaj id → hangi üyelerde var” bilgisini bir map’te tutsun:
 
   * `Map<Integer, List<MemberId>>`
-* [ ] GET isteğinde:
+* [X] GET isteğinde:
 
   * Eğer liderin kendi diskinde varsa doğrudan kendinden okusun
   * Yoksa mesajın tutulduğu üye listesinden sırayla gRPC ile `Retrieve` isteği göndersin

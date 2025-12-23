@@ -6,6 +6,9 @@ option java_multiple_files = true;
 option java_package = "family";
 option java_outer_classname = "FamilyProto";
 
+// Hata veren import satırını sildik, yerine kendimiz tanımlıyoruz:
+message Empty {}
+
 // Üyelerin diske kaydedeceği mesaj yapısı
 message StoredMessage {
   int32 messageId = 1;
@@ -36,10 +39,13 @@ message FamilyView {
 service FamilyService {
   // Liderin üyeye: "Bunu kaydet" demesi
   rpc Store(StoredMessage) returns (StoreResponse);
-  
+
   // Liderin üyeden: "Şu ID'li mesajı ver" demesi
   rpc Retrieve(GetRequest) returns (StoredMessage);
 
   // Üye kaydı
   rpc Join(NodeInfo) returns (FamilyView);
+
+  // ✅ SAĞLIK KONTROLÜ (PING) - Parametreyi yerel Empty yaptık
+  rpc GetFamilyView(Empty) returns (FamilyView);
 }

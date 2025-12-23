@@ -5,203 +5,159 @@ import com.example.command.CommandParser;
 import family.FamilyServiceGrpc;
 import family.FamilyView;
 import family.NodeInfo;
-
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
-import java.net.SocketException;
-
-import java.io.IOException;
-import java.net.ServerSocket;
+import java.io.*;
+import java.net.*;
+import java.nio.file.*;
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
-
 import com.example.store.MessageStore;
 
 public class NodeMain {
-
     private static final int START_PORT = 5555;
-    private static final int CLIENT_COMMAND_PORT = 6666; // Istemci komutları için port
+    private static final int CLIENT_COMMAND_PORT = 6666;
     private static final int PRINT_INTERVAL_SECONDS = 10;
     
-    // Liderin, dağıtık olarak saklanacak mesajları hafıza içi tuttuğu Map
-    private static final ConcurrentHashMap<String, String> storage = new ConcurrentHashMap<>();
+    public static final NodeRegistry registry = new NodeRegistry();
+    public static final ConcurrentHashMap<String, String> storage = new ConcurrentHashMap<>();
+    public static final ConcurrentHashMap<Integer, List<NodeInfo>> messageLocations = new ConcurrentHashMap<>();
     
-    
-    // Istemci bağlantılarını işlemek için sabit boyutlu thread havuzu
     private static final ExecutorService clientPool = Executors.newFixedThreadPool(10); 
-
-    private static final MessageStore messageStore = new MessageStore();
+    private static int TOLERANCE = 1;
+    private static MessageStore messageStore;
 
     public static void main(String[] args) throws Exception {
+        TOLERANCE = readToleranceConfig();
         String host = "127.0.0.1";
         int port = findFreePort(START_PORT);
+        messageStore = new MessageStore("data_" + port);
 
         NodeInfo self = NodeInfo.newBuilder()
                 .setHost(host)
                 .setPort(port)
+                .setId("Node_" + port)
                 .build();
 
-        NodeRegistry registry = new NodeRegistry();
         FamilyServiceImpl service = new FamilyServiceImpl(registry, self);
 
-        Server server = ServerBuilder
-                .forPort(port)
+        Server server = ServerBuilder.forPort(port)
                 .addService(service)
                 .build()
                 .start();
 
-        System.out.printf("Node started on %s:%d%n", host, port);
+        System.out.printf("Node started on %s:%d (Tolerance: %d)%n", host, port, TOLERANCE);
 
-        // Eğer bu ilk node ise (port 5555), liderdir ve istemci komutlarını dinlemelidir.
-        if (port == START_PORT) {
-            // Lider olarak istemci komutlarını dinlemeyi başlat
-            startLeaderCommandListener(self); 
+        if (port != START_PORT) {
+            discoverExistingNodes(host, port, registry, self);
+        } else {
+            startLeaderCommandListener(); 
+            startHealthChecker(registry, self);
         }
 
-        discoverExistingNodes(host, port, registry, self);
         startFamilyPrinter(registry, self);
-        startHealthChecker(registry, self);
-
         server.awaitTermination();
     }
-    
-    private static void startLeaderCommandListener(NodeInfo self) {
-        new Thread(() -> {
-            try (ServerSocket serverSocket = new ServerSocket(CLIENT_COMMAND_PORT)) {
-                System.out.printf("✅ [LEADER] Istemci Komut Dinleyici Başlatıldı: TCP %s:%d%n",
-                        self.getHost(), CLIENT_COMMAND_PORT);
 
-                while (true) {
-                    Socket client = serverSocket.accept();
-                    clientPool.execute(() -> handleClientCommandConnection(client)); // Havuzu kullan
+    private static void startHealthChecker(NodeRegistry registry, NodeInfo self) {
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(() -> {
+            List<NodeInfo> members = registry.snapshot();
+            for (NodeInfo n : members) {
+                if (n.getPort() == self.getPort()) continue;
+
+                ManagedChannel channel = null;
+                try {
+                    channel = ManagedChannelBuilder.forAddress(n.getHost(), n.getPort())
+                            .usePlaintext()
+                            .build();
+                    FamilyServiceGrpc.FamilyServiceBlockingStub stub = FamilyServiceGrpc.newBlockingStub(channel);
+                    
+                    // family.Empty kullanarak Google çakışmasını önledik
+                    // 2 saniye timeout ekledik ki yalancı çevrimdışı olmasın
+                    stub.withDeadlineAfter(2, TimeUnit.SECONDS).getFamilyView(family.Empty.getDefaultInstance());
+                    
+                } catch (Exception e) {
+                    System.out.println("⚠️ Üye çevrimdışı: " + n.getPort());
+                    registry.remove(n); 
+                } finally {
+                    if (channel != null) {
+                        channel.shutdown();
+                    }
                 }
-
-            } catch (IOException e) {
-                System.err.println("❌ [LEADER] Istemci Komut Dinleyici Hatası: " + e.getMessage());
-                // Node düşerse veya port meşgul olursa buraya düşer.
             }
-        }, "LeaderCommandListener").start();
+        }, 5, 5, TimeUnit.SECONDS); 
     }
 
-    /**
-     * Tek bir istemci bağlantısından gelen komutları işler.
-     * SET/GET komutlarını ayrıştırıp çalıştırır.
-     */
-    private static void handleClientCommandConnection(Socket client) {
-        String clientAddress = client.getRemoteSocketAddress().toString();
-        System.out.println("🔗 [LEADER] Yeni istemci bağlantısı: " + clientAddress);
-
-        try (
-            BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-            PrintWriter out = new PrintWriter(client.getOutputStream(), true); // autoFlush: true
-        ) {
-            String clientLine;
-            
-            // Istemciden satır satır komutları oku
-            while ((clientLine = in.readLine()) != null) {
-                String line = clientLine.trim();
-                if (line.isEmpty()) continue;
-                
-                System.out.printf("📥 [LEADER] %s'den gelen komut: %s\n", clientAddress, line);
-
-                Command command = CommandParser.parse(line);
-                String response;
-
-                if (command != null) {
-                    // Komutu çalıştır ve yanıtı al. storage map'ini execute metoduna iletiyoruz.
-                    // (Aşama 1: Sadece liderin kendi Map'ine kaydeder.)
-                    response = command.execute(storage, messageStore); 
-                } else {
-                    response = "ERROR: Invalid Command Format";
+    private static int readToleranceConfig() {
+        try {
+            Path path = Paths.get("tolerance.conf");
+            if (Files.exists(path)) {
+                List<String> lines = Files.readAllLines(path);
+                for (String line : lines) {
+                    if (line.trim().startsWith("TOLERANCE=")) return Integer.parseInt(line.split("=")[1].trim());
                 }
-                
-                // Yanıtı istemciye geri gönder
-                out.println(response); 
-                System.out.printf("📤 [LEADER] %s'e gonderilen yanit: %s\n", 
-                                  clientAddress, response.length() > 50 ? response.substring(0, 50) + "..." : response);
             }
+        } catch (Exception e) { }
+        return 1;
+    }
 
-        } catch (SocketException e) {
-            // Istemci aniden bağlantıyı keserse
-            System.out.println("❌ [LEADER] Istemci bağlantısı aniden kesildi: " + clientAddress);
-        } catch (IOException e) {
-            System.err.println("❌ [LEADER] TCP client handler error: " + e.getMessage());
-        } finally {
-            try { 
-                client.close(); 
-                System.out.println("🚪 [LEADER] Istemci bağlantısı kapatıldı: " + clientAddress);
-            } catch (IOException ignored) {}
-        }
+    public static int getTolerance() { return TOLERANCE; }
+
+    private static void discoverExistingNodes(String host, int selfPort, NodeRegistry registry, NodeInfo self) {
+        try {
+            ManagedChannel channel = ManagedChannelBuilder.forAddress(host, START_PORT).usePlaintext().build();
+            FamilyServiceGrpc.FamilyServiceBlockingStub stub = FamilyServiceGrpc.newBlockingStub(channel);
+            FamilyView view = stub.join(self);
+            for (NodeInfo member : view.getMembersList()) { registry.add(member); }
+            System.out.println("✅ Lidere kayıt olundu. Üye sayısı: " + view.getMembersCount());
+            channel.shutdown();
+        } catch (Exception e) { System.err.println("❌ Lider hatası: " + e.getMessage()); }
+    }
+
+    private static void startLeaderCommandListener() {
+        new Thread(() -> {
+            try (ServerSocket serverSocket = new ServerSocket(CLIENT_COMMAND_PORT)) {
+                System.out.println("✅ [LEADER] TCP 6666 Dinleniyor...");
+                while (true) {
+                    Socket client = serverSocket.accept();
+                    clientPool.execute(() -> handleClientCommandConnection(client));
+                }
+            } catch (IOException e) { e.printStackTrace(); }
+        }).start();
+    }
+
+    private static void handleClientCommandConnection(Socket client) {
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+             PrintWriter out = new PrintWriter(client.getOutputStream(), true)) {
+            String line;
+            while ((line = in.readLine()) != null) {
+                Command command = CommandParser.parse(line.trim());
+                if (command != null) out.println(command.execute(storage, messageStore));
+                else out.println("ERROR");
+            }
+        } catch (Exception ignored) { }
     }
 
     private static int findFreePort(int startPort) {
         int port = startPort;
         while (true) {
-            try (ServerSocket ignored = new ServerSocket(port)) {
-                return port;
-            } catch (IOException e) {
-                port++;
-            }
+            try (ServerSocket ignored = new ServerSocket(port)) { return port; }
+            catch (IOException e) { port++; }
         }
     }
 
-    private static void discoverExistingNodes(String host,
-                                             int selfPort,
-                                             NodeRegistry registry,
-                                             NodeInfo self) {
-      
-    }
-
     private static void startFamilyPrinter(NodeRegistry registry, NodeInfo self) {
-       
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-        scheduler.scheduleAtFixedRate(() -> {
+        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
             List<NodeInfo> members = registry.snapshot();
-            // Lider isek (START_PORT == self.getPort()) ek bilgi basılabilir
             boolean isLeader = self.getPort() == START_PORT;
-
-            System.out.println("======================================");
-            System.out.printf("Family at %s:%d (%s)%n", self.getHost(), self.getPort(), isLeader ? "LEADER" : "MEMBER");
-            System.out.println("Time: " + LocalDateTime.now());
-            
-            
-            if (isLeader) {
-                 System.out.println("Total Messages Stored (LIDER LOCAL): " + storage.size());
-               
-            }
-            
-            System.out.println("Members:");
-
-            for (NodeInfo n : members) {
-                boolean isMe = n.getHost().equals(self.getHost()) && n.getPort() == self.getPort();
-                System.out.printf(" - %s:%d%s%n",
-                        n.getHost(),
-                        n.getPort(),
-                        isMe ? " (me)" : "");
-            }
-            System.out.println("======================================");
-        }, 3, PRINT_INTERVAL_SECONDS, TimeUnit.SECONDS);
-    }
-
-    private static void startHealthChecker(NodeRegistry registry, NodeInfo self) {
-      
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-        scheduler.scheduleAtFixedRate(() -> {
-            List<NodeInfo> members = registry.snapshot();
-
-            for (NodeInfo n : members) {
-                
-            }
-
-        }, 5, 10, TimeUnit.SECONDS); // 5 sn sonra başla, 10 sn'de bir kontrol et
+            System.out.println("\n========= SYSTEM STATUS =========");
+            System.out.printf("Node: %d (%s) | Active: %d%n", self.getPort(), isLeader ? "L" : "M", members.size());
+            for (NodeInfo n : members) System.out.println(" - " + n.getPort());
+            System.out.println("=================================");
+        }, 5, PRINT_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 }

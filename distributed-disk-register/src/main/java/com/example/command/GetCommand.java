@@ -1,7 +1,13 @@
 package com.example.command;
 
-import com.example.store.MessageStore; 
+import com.example.family.NodeMain;
+import com.example.store.MessageStore;
+import family.*;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class GetCommand extends Command {
     private final String messageId;
@@ -12,16 +18,36 @@ public class GetCommand extends Command {
 
     @Override
     public String execute(ConcurrentHashMap<String, String> storage, MessageStore messageStore) {
-        // Mesajı diskten okuma işlemini MessageStore'a devret.
-        String result = messageStore.readMessage(messageId);
+        // 1. Liderin kendi diskine bak
+        String local = messageStore.readMessage(messageId);
+        if (local != null) return local;
 
-        if (result != null) {
-            System.out.printf("[LEADER] Mesaj diskten bulundu. ID: %s\n", messageId);
-            return result; // İstemciye mesajın kendisini döndür.
-        } else {
-            // Aşama 3'te buraya Hata Toleranslı okuma mantığı eklenecek.
-            System.out.printf("[LEADER] Mesaj diskte bulunamadı. ID: %s\n", messageId);
-            return "NOT_FOUND";
+        // 2. Kendi diskinde yoksa üyelere bak
+        int idInt = Integer.parseInt(messageId);
+        List<NodeInfo> locations = NodeMain.messageLocations.get(idInt);
+
+        if (locations != null) {
+            for (NodeInfo target : locations) {
+                try {
+                    ManagedChannel channel = ManagedChannelBuilder.forAddress(target.getHost(), target.getPort())
+                            .usePlaintext().build();
+                    FamilyServiceGrpc.FamilyServiceBlockingStub stub = FamilyServiceGrpc.newBlockingStub(channel);
+
+                    StoredMessage response = stub.retrieve(GetRequest.newBuilder()
+                            .setMessageId(idInt)
+                            .build());
+
+                    channel.shutdown().awaitTermination(1, TimeUnit.SECONDS);
+
+                    if (response != null && !response.getContent().isEmpty()) {
+                        return response.getContent();
+                    }
+                } catch (Exception e) {
+                    System.err.println("⚠️ Üye cevap vermedi, sıradaki deneniyor...");
+                }
+            }
         }
+
+        return "NOT_FOUND";
     }
 }
